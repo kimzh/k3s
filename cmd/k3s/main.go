@@ -84,7 +84,7 @@ func stageAndRun(dataDir string, cmd string, args []string) error {
 		return errors.Wrap(err, "extracting data")
 	}
 
-	if err := os.Setenv("PATH", filepath.Join(dir, "bin")+":"+os.Getenv("PATH")); err != nil {
+	if err := os.Setenv("PATH", filepath.Join(dir, "bin")+":"+os.Getenv("PATH")+":"+filepath.Join(dir, "bin/aux")); err != nil {
 		return err
 	}
 
@@ -105,13 +105,13 @@ func getAssetAndDir(dataDir string) (string, string) {
 
 func extract(dataDir string) (string, error) {
 	// first look for global asset folder so we don't create a HOME version if not needed
-	asset, dir := getAssetAndDir(datadir.DefaultDataDir)
+	_, dir := getAssetAndDir(datadir.DefaultDataDir)
 	if _, err := os.Stat(dir); err == nil {
 		logrus.Debugf("Asset dir %s", dir)
 		return dir, nil
 	}
 
-	asset, dir = getAssetAndDir(dataDir)
+	asset, dir := getAssetAndDir(dataDir)
 	if _, err := os.Stat(dir); err == nil {
 		logrus.Debugf("Asset dir %s", dir)
 		return dir, nil

@@ -16,13 +16,18 @@ import (
 	"github.com/rancher/k3s/pkg/agent/syssetup"
 	"github.com/rancher/k3s/pkg/agent/tunnel"
 	"github.com/rancher/k3s/pkg/cli/cmds"
+	"github.com/rancher/k3s/pkg/clientaccess"
 	"github.com/rancher/k3s/pkg/daemons/agent"
-	"github.com/rancher/norman/pkg/clientaccess"
+	"github.com/rancher/k3s/pkg/rootless"
 	"github.com/sirupsen/logrus"
 )
 
 func run(ctx context.Context, cfg cmds.Agent) error {
 	nodeConfig := config.Get(ctx, cfg)
+
+	if err := config.HostnameCheck(cfg); err != nil {
+		return err
+	}
 
 	if !nodeConfig.NoFlannel {
 		if err := flannel.Prepare(ctx, nodeConfig); err != nil {
@@ -32,6 +37,7 @@ func run(ctx context.Context, cfg cmds.Agent) error {
 
 	if nodeConfig.Docker || nodeConfig.ContainerRuntimeEndpoint != "" {
 		nodeConfig.AgentConfig.RuntimeSocket = nodeConfig.ContainerRuntimeEndpoint
+		nodeConfig.AgentConfig.CNIPlugin = true
 	} else {
 		if err := containerd.Run(ctx, nodeConfig); err != nil {
 			return err
@@ -67,6 +73,12 @@ func run(ctx context.Context, cfg cmds.Agent) error {
 func Run(ctx context.Context, cfg cmds.Agent) error {
 	if err := validate(); err != nil {
 		return err
+	}
+
+	if cfg.Rootless {
+		if err := rootless.Rootless(cfg.DataDir); err != nil {
+			return err
+		}
 	}
 
 	cfg.DataDir = filepath.Join(cfg.DataDir, "agent")

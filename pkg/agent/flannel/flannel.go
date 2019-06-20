@@ -36,8 +36,8 @@ const (
 	subnetFile = "/run/flannel/subnet.env"
 )
 
-func flannel(ctx context.Context, flannelConf, kubeConfigFile string) error {
-	extIface, err := LookupExtIface()
+func flannel(ctx context.Context, flannelIface *net.Interface, flannelConf, kubeConfigFile string) error {
+	extIface, err := LookupExtIface(flannelIface)
 	if err != nil {
 		return err
 	}
@@ -81,14 +81,17 @@ func flannel(ctx context.Context, flannelConf, kubeConfigFile string) error {
 	return nil
 }
 
-func LookupExtIface() (*backend.ExternalInterface, error) {
-	var iface *net.Interface
+func LookupExtIface(iface *net.Interface) (*backend.ExternalInterface, error) {
 	var ifaceAddr net.IP
 	var err error
 
-	log.Info("Determining IP address of default interface")
-	if iface, err = ip.GetDefaultGatewayIface(); err != nil {
-		return nil, fmt.Errorf("failed to get default interface: %s", err)
+	if iface == nil {
+		log.Info("Determining IP address of default interface")
+		if iface, err = ip.GetDefaultGatewayIface(); err != nil {
+			return nil, fmt.Errorf("failed to get default interface: %s", err)
+		}
+	} else {
+		log.Info("Determining IP address of specified interface: ", iface.Name)
 	}
 
 	ifaceAddr, err = ip.GetIfaceIP4Addr(iface)
@@ -122,7 +125,7 @@ func WriteSubnetFile(path string, nw ip.IP4Net, ipMasq bool, bn backend.Network)
 	// Write out the first usable IP by incrementing
 	// sn.IP by one
 	sn := bn.Lease().Subnet
-	sn.IP += 1
+	sn.IP++
 
 	fmt.Fprintf(f, "FLANNEL_NETWORK=%s\n", nw)
 	fmt.Fprintf(f, "FLANNEL_SUBNET=%s\n", sn)

@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rancher/wrangler/pkg/signals"
+
 	"github.com/rancher/k3s/pkg/agent"
 	"github.com/rancher/k3s/pkg/cli/cmds"
-	"github.com/rancher/norman/pkg/resolvehome"
-	"github.com/rancher/norman/signal"
+	"github.com/rancher/k3s/pkg/datadir"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 )
@@ -57,7 +58,7 @@ func Run(ctx *cli.Context) error {
 
 	logrus.Infof("Starting k3s agent %s", ctx.App.Version)
 
-	dataDir, err := resolvehome.Resolve(cmds.AgentConfig.DataDir)
+	dataDir, err := datadir.LocalHome(cmds.AgentConfig.DataDir, cmds.AgentConfig.Rootless)
 	if err != nil {
 		return err
 	}
@@ -65,8 +66,9 @@ func Run(ctx *cli.Context) error {
 	cfg := cmds.AgentConfig
 	cfg.Debug = ctx.GlobalBool("debug")
 	cfg.DataDir = dataDir
+	cfg.Labels = append(cfg.Labels, "node-role.kubernetes.io/worker=true")
 
-	contextCtx := signal.SigTermCancelContext(context.Background())
+	contextCtx := signals.SetupSignalHandler(context.Background())
 
 	return agent.Run(contextCtx, cfg)
 }

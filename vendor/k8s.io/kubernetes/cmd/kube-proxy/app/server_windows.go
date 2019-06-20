@@ -24,6 +24,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+
+	// Enable pprof HTTP handlers.
 	_ "net/http/pprof"
 
 	"k8s.io/api/core/v1"
@@ -63,7 +65,7 @@ func newProxyServer(config *proxyconfigapi.KubeProxyConfiguration, cleanupAndExi
 
 	// We omit creation of pretty much everything if we run in cleanup mode
 	if cleanupAndExit {
-		return &ProxyServer{CleanupAndExit: cleanupAndExit}, nil
+		return &ProxyServer{}, nil
 	}
 
 	client, eventClient, err := createClients(config.ClientConnection, master)
@@ -110,6 +112,7 @@ func newProxyServer(config *proxyconfigapi.KubeProxyConfiguration, cleanupAndExi
 			utilnode.GetNodeIP(client, hostname),
 			recorder,
 			healthzUpdater,
+			config.Winkernel,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to create proxier: %v", err)
@@ -143,8 +146,6 @@ func newProxyServer(config *proxyconfigapi.KubeProxyConfiguration, cleanupAndExi
 		}
 		proxier = proxierUserspace
 		serviceEventHandler = proxierUserspace
-		klog.V(0).Info("Tearing down pure-winkernel proxy rules.")
-		winkernel.CleanupLeftovers()
 	}
 
 	return &ProxyServer{

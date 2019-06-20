@@ -56,18 +56,18 @@ To run the server just do
 You should get an output similar to
 
 ```
-INFO[2019-01-22T15:16:19.908493986-07:00] Starting k3s dev                             
+INFO[2019-01-22T15:16:19.908493986-07:00] Starting k3s dev
 INFO[2019-01-22T15:16:19.908934479-07:00] Running kube-apiserver --allow-privileged=true --authorization-mode Node,RBAC --service-account-signing-key-file /var/lib/rancher/k3s/server/tls/service.key --service-cluster-ip-range 10.43.0.0/16 --advertise-port 6445 --advertise-address 127.0.0.1 --insecure-port 0 --secure-port 6444 --bind-address 127.0.0.1 --tls-cert-file /var/lib/rancher/k3s/server/tls/localhost.crt --tls-private-key-file /var/lib/rancher/k3s/server/tls/localhost.key --service-account-key-file /var/lib/rancher/k3s/server/tls/service.key --service-account-issuer k3s --api-audiences unknown --basic-auth-file /var/lib/rancher/k3s/server/cred/passwd --kubelet-client-certificate /var/lib/rancher/k3s/server/tls/token-node.crt --kubelet-client-key /var/lib/rancher/k3s/server/tls/token-node.key
 Flag --insecure-port has been deprecated, This flag will be removed in a future version.
 INFO[2019-01-22T15:16:20.196766005-07:00] Running kube-scheduler --kubeconfig /var/lib/rancher/k3s/server/cred/kubeconfig-system.yaml --port 0 --secure-port 0 --leader-elect=false
 INFO[2019-01-22T15:16:20.196880841-07:00] Running kube-controller-manager --kubeconfig /var/lib/rancher/k3s/server/cred/kubeconfig-system.yaml --service-account-private-key-file /var/lib/rancher/k3s/server/tls/service.key --allocate-node-cidrs --cluster-cidr 10.42.0.0/16 --root-ca-file /var/lib/rancher/k3s/server/tls/token-ca.crt --port 0 --secure-port 0 --leader-elect=false
 Flag --port has been deprecated, see --secure-port instead.
-INFO[2019-01-22T15:16:20.273441984-07:00] Listening on :6443                           
+INFO[2019-01-22T15:16:20.273441984-07:00] Listening on :6443
 INFO[2019-01-22T15:16:20.278383446-07:00] Writing manifest: /var/lib/rancher/k3s/server/manifests/coredns.yaml
 INFO[2019-01-22T15:16:20.474454524-07:00] Node token is available at /var/lib/rancher/k3s/server/node-token
 INFO[2019-01-22T15:16:20.474471391-07:00] To join node to cluster: k3s agent -s https://10.20.0.3:6443 -t ${NODE_TOKEN}
 INFO[2019-01-22T15:16:20.541027133-07:00] Wrote kubeconfig /etc/rancher/k3s/k3s.yaml
-INFO[2019-01-22T15:16:20.541049100-07:00] Run: k3s kubectl                             
+INFO[2019-01-22T15:16:20.541049100-07:00] Run: k3s kubectl
 ```
 
 The output will probably be much longer as the agent will spew a lot of logs. By default the server
@@ -78,6 +78,13 @@ flag
     k3s server --disable-agent
 
 At this point, you can run the agent as a separate process or not run it on this node at all.
+
+If you encounter an error like `"stream server error: listen tcp: lookup some-host on X.X.X.X:53: no such host"`
+when starting k3s please ensure `/etc/hosts` contains your current hostname (output of `hostname`),
+set to a 127.x.x.x address. For example:
+```
+127.0.1.1	myhost
+```
 
 Joining nodes
 -------------
@@ -104,7 +111,7 @@ Kubernetes in a manner similar to `kubectl apply`.
 It is also possible to deploy Helm charts. k3s supports a CRD controller for installing charts. A YAML file specification can look as following (example taken from `/var/lib/rancher/k3s/server/manifests/traefik.yaml`):
 
 ```yaml
-apiVersion: k3s.cattle.io/v1
+apiVersion: helm.cattle.io/v1
 kind: HelmChart
 metadata:
   name: traefik
@@ -116,6 +123,110 @@ spec:
     ssl.enabled: "true"
 ```
 
+Keep in mind that `namespace` in your HelmChart resource metadata section should always be `kube-system`, because k3s deploy controller is configured to watch this namespace for new HelmChart resources. If you want to specify the namespace for the actual helm release, you can do that using `targetNamespace` key in the spec section:
+
+```
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: grafana
+  namespace: kube-system
+spec:
+  chart: stable/grafana
+  targetNamespace: monitoring
+  set:
+    adminPassword: "NotVerySafePassword"
+  valuesContent: |-
+    image:
+      tag: master
+    env:
+      GF_EXPLORE_ENABLED: true
+    adminUser: admin
+    sidecar:
+      datasources:
+        enabled: true
+```
+
+Also note that besides `set` you can use `valuesContent` in the spec section. And it's okay to use both of them.
+
+k3s versions <= v0.5.0 used `k3s.cattle.io` for the api group of helmcharts, this has been changed to `helm.cattle.io` for later versions.
+
+Storage Backends
+----------------
+
+As of version 0.6.0, k3s can support various storage backends including: SQLite (default), MySQL, Postgres, and etcd, this enahancement depends on the following arguments that can be passed to k3s server:
+
+```
+--storage-backend value             Specify storage type etcd3 or kvsql [$K3S_STORAGE_BACKEND]
+--storage-endpoint value            Specify etcd, Mysql, Postgres, or Sqlite (default) data source name [$K3S_STORAGE_ENDPOINT]
+--storage-cafile value              SSL Certificate Authority file used to secure storage backend communication [$K3S_STORAGE_CAFILE]
+--storage-certfile value            SSL certification file used to secure storage backend communication [$K3S_STORAGE_CERTFILE]
+--storage-keyfile value             SSL key file used to secure storage backend communication [$K3S_STORAGE_KEYFILE]
+```
+
+## MySQL
+
+To use k3s with MySQL storage backend, you can specify the following for insecure connection:
+
+```
+k3s server --storage-endpoint="mysql://"
+```
+By default the server will attempt to connect to mysql using the mysql socket at `/var/run/mysqld/mysqld.sock` using the root user and with no password, k3s will also create a database with the name `kubernetes` if the database is not specified in the DSN.
+
+To override the method of connection, user/pass, and database name, you can provide a custom DSN, for example:
+
+```
+k3s server --storage-endpoint="mysql://k3suser:k3spass@tcp(192.168.1.100:3306)/k3stest"
+```
+
+This command will attempt to connect to MySQL on host `192.168.1.100` on port `3306` with username `k3suser` and password `k3spass` and k3s will automatically create a new database with the name `k3stest` if it doesn't exist, for more information about the MySQL driver data source name, please refer to https://github.com/go-sql-driver/mysql#dsn-data-source-name
+
+To connect to MySQL securely, you can use the following example:
+```
+k3s server --storage-endpoint="mysql://k3suser:k3spass@tcp(192.168.1.100:3306)/k3stest" --storage-cafile ca.crt --storage-certfile mysql.crt --storage-keyfile mysql.key
+```
+The above command will use these certificates to generate the tls config to communicate with mysql securely.
+
+
+## Postgres
+
+Connection to postgres can be established using the following command:
+
+```
+k3s server --storage-endpoint="postgres://"
+```
+
+By default the server will attempt to connect to postgres on localhost with using the `postgres` user and with `postgres` password, k3s will also create a database with the name `kubernetes` if the database is not specified in the DSN.
+
+To override the method of connection, user/pass, and database name, you can provide a custom DSN, for example:
+
+```
+k3s server --storage-endpoint="postgres://k3suser:k3spass@192.168.1.100:5432/k3stest"
+```
+
+This command will attempt to connect to Postgres on host `192.168.1.100` on port `5432` with username `k3suser` and password `k3spass` and k3s will automatically create a new database with the name `k3stest` if it doesn't exist, for more information about the Postgres driver data source name, please refer to https://godoc.org/github.com/lib/pq
+
+To connect to Postgres securely, you can use the following example:
+
+```
+k3s server --storage-endpoint="postgres://k3suser:k3spass@192.168.1.100:5432/k3stest?sslmode=verify-full" --storage-certfile postgres.crt --storage-keyfile postgres.key --storage-cafile ca.crt
+```
+
+The above command will use these certificates to generate the tls config to communicate with postgres securely, note that the `sslmode` in the example is `verify-full` which verify that the certification presented by the server was signed by a trusted CA and the server host name matches the one in the certificate.
+
+## etcd
+
+Connection to postgres can be established using the following command:
+
+```
+k3s server --storage-backend=etcd3 --storage-endpoint="https://127.0.0.1:2379"
+```
+The above command will attempt to connect insecurely to etcd on localhost with port `2379`, you can connect securely to etcd using the following command:
+
+```
+k3s server --storage-backend=etcd3 --storage-endpoint="https://127.0.0.1:2379" --storage-cafile ca.crt --storage-certfile etcd.crt --storage-keyfile etcd.key
+```
+
 Building from source
 --------------------
 
@@ -125,7 +236,7 @@ The clone will be much faster on this repo if you do
 
 This repo includes all of Kubernetes history so `--depth 1` will avoid most of that.
 
-For development, you just need go 1.11 and a sane GOPATH.  To compile the binaries run
+For development, you just need go 1.12 and a sane GOPATH.  To compile the binaries run
 
 ```bash
 go build -o k3s
@@ -146,6 +257,31 @@ helper scripts
 ```
 
 To build the full release binary run `make` and that will create `./dist/artifacts/k3s`
+
+
+Customizing components
+----------------------
+
+As of v0.3.0 any of the following processes can be customized with extra flags:
+
+- kube-apiserver (server)
+- kube-controller-manager (server)
+- kube-scheduler (server)
+- kubelet (agent)
+- kube-proxy (agent)
+
+Adding extra argument can be done by passing the following flags to server or agent:
+```
+--kube-apiserver-arg value
+--kube-scheduler-arg value
+--kube-controller-arg value
+--kubelet-arg value        
+--kube-proxy-arg value     
+```
+For example to add the following arguments `-v=9` and `log-file=/tmp/kubeapi.log` to the kube-apiserver, you should pass the following:
+```
+k3s server --kube-apiserver-arg v=9 --kube-apiserver-arg log-file=/tmp/kubeapi.log
+```
 
 Uninstalling server
 -----------------
@@ -197,9 +333,9 @@ serves as an example of how to run k3s from Docker.  To run from `docker-compose
 To run the agent only in Docker use the following `docker-compose-agent.yml` is in the root of this repo that
 serves as an example of how to run k3s agent from Docker. Alternatively the Docker run command can also be used;
 
-    sudo docker run -d --tmpfs /run --tmpfs /var/run -e K3S_URL=${SERVER_URL} -e K3S_TOKEN=${NODE_TOKEN} --privileged rancher/k3s:v0.2.0
+    sudo docker run -d --tmpfs /run --tmpfs /var/run -e K3S_URL=${SERVER_URL} -e K3S_TOKEN=${NODE_TOKEN} --privileged rancher/k3s:v0.6.0
 
-    sudo docker run -d --tmpfs /run --tmpfs /var/run -e K3S_URL=https://k3s.example.com:6443 -e K3S_TOKEN=K13849a67fc385fd3c0fa6133a8649d9e717b0258b3b09c87ffc33dae362c12d8c0::node:2e373dca319a0525745fd8b3d8120d9c --privileged rancher/k3s:v0.2.0
+    sudo docker run -d --tmpfs /run --tmpfs /var/run -e K3S_URL=https://k3s.example.com:6443 -e K3S_TOKEN=K13849a67fc385fd3c0fa6133a8649d9e717b0258b3b09c87ffc33dae362c12d8c0::node:2e373dca319a0525745fd8b3d8120d9c --privileged rancher/k3s:v0.6.0
 
 
 Hyperkube
@@ -219,6 +355,10 @@ yes then you just need to run the agent with the `--docker` flag
 
      k3s agent -s ${SERVER_URL} -t ${NODE_TOKEN} --docker &
 
+k3s will generate config.toml for containerd in `/var/lib/rancher/k3s/agent/etc/containerd/config.toml`, for advanced customization for this file you can create another file called `config.toml.tmpl` in the same directory and it will be used instead.
+
+The `config.toml.tmpl` will be treated as a Golang template file, and the `config.Node` structure is being passed to the template,the following is an example on how to use the structure to customize the configuration file https://github.com/rancher/k3s/blob/master/pkg/agent/templates/templates.go#L16-L32
+
 systemd
 -------
 
@@ -229,11 +369,11 @@ in the root of this repo `k3s.service` which is as follows
 [Unit]
 Description=Lightweight Kubernetes
 Documentation=https://k3s.io
-After=network.target
+After=network-online.target
 
 [Service]
-ExecStartPre=-/sbin/modprobe br_netfilter
-ExecStartPre=-/sbin/modprobe overlay
+Type=notify
+EnvironmentFile=/etc/systemd/system/k3s.service.env
 ExecStart=/usr/local/bin/k3s server
 KillMode=process
 Delegate=yes
@@ -241,6 +381,8 @@ LimitNOFILE=infinity
 LimitNPROC=infinity
 LimitCORE=infinity
 TasksMax=infinity
+TimeoutStartSec=0
+Restart=always
 
 [Install]
 WantedBy=multi-user.target
@@ -335,6 +477,71 @@ The full help text for the install script environment variables are as follows:
      Type of systemd service to create, will default from the k3s exec command
      if not specified.
 
+openrc on Alpine Linux
+-------
+
+In order to pre-setup Alpine Linux you have to go through the following steps:
+
+```bash
+echo "cgroup /sys/fs/cgroup cgroup defaults 0 0" >> /etc/fstab
+
+cat >> /etc/cgconfig.conf <<EOF
+mount {
+cpuacct = /cgroup/cpuacct;
+memory = /cgroup/memory;
+devices = /cgroup/devices;
+freezer = /cgroup/freezer;
+net_cls = /cgroup/net_cls;
+blkio = /cgroup/blkio;
+cpuset = /cgroup/cpuset;
+cpu = /cgroup/cpu;
+}
+EOF
+```
+
+Then update **/etc/update-extlinux.conf** by adding:
+
+```
+default_kernel_opts="...  cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory"
+```
+
+Than update the config and reboot
+
+```bash
+update-extlinux
+reboot
+```
+
+After rebooting:
+
+- download **k3s** to **/usr/local/bin/k3s**
+- create an openrc file in **/etc/init.d**
+
+For the server:
+
+```bash
+#!/sbin/openrc-run
+
+command=/usr/local/bin/k3s
+command_args="server"
+pidfile=
+
+name="k3s"
+description="Lightweight Kubernetes"
+```
+
+For the agent:
+
+```bash
+#!/sbin/openrc-run
+
+command=/usr/local/bin/k3s
+command_args="agent --server https://myserver:6443 --token ${NODE_TOKEN}"
+pidfile=
+
+name="k3s"
+description="Lightweight Kubernetes"
+```
 
 Flannel
 -------
@@ -371,11 +578,111 @@ for port 80.  If no port is available the load balancer will stay in Pending.
 To disable the embedded service load balancer (if you wish to use a different implementation like
 MetalLB) just add `--no-deploy=servicelb` to the server on startup.
 
+Air-Gap Support
+---------------
+
+k3s supports pre-loading of containerd images by placing them in the `images` directory for the agent before starting, eg:
+```sh
+sudo mkdir -p /var/lib/rancher/k3s/agent/images/
+sudo cp ./k3s-airgap-images-$ARCH.tar /var/lib/rancher/k3s/agent/images/
+```
+Images needed for a base install are provided through the releases page, additional images can be created with the `docker save` command.
+
+Offline Helm charts are served from the `/var/lib/rancher/k3s/server/static` directory, and Helm chart manifests may reference the static files with a `%{KUBERNETES_API}%` templated variable. For example, the default traefik manifest chart installs from `https://%{KUBERNETES_API}%/static/charts/traefik-X.Y.Z.tgz`.
+
+If networking is completely disabled k3s may not be able to start (ie ethernet unplugged or wifi disconnected), in which case it may be necessary to add a default route. For example:
+```sh
+sudo ip -c address add 192.168.123.123/24 dev eno1
+sudo ip route add default via 192.168.123.1
+```
+
+k3s additionally provides a `--resolv-conf` flag for kubelets, which may help with configuring DNS in air-gap networks.
+
+Rootless - (Some advanced magic, user beware)
+--------
+
+Initial rootless support has been added but there are a series of significant usability issues surrounding it.
+We are releasing the initial support for those interested in rootless and hopefully some people can help to
+improve the usability.  First ensure you have proper setup and support for user namespaces.  Refer to the
+[requirements section](https://github.com/rootless-containers/rootlesskit#setup) in rootlesskit for instructions.
+In short, latest Ubuntu is your best bet for this to work.
+
+Node Labels and Taints
+----------------------
+
+k3s server and agent can be configured with options `--node-label` and `--node-taint` which adds set of Labels and Taints to kubelet, the two options only adds labels/taints at registration time, so they can only be added once and not changed after that, an example to add new label is:
+```
+k3s server --node-label foo=bar --node-label hello=world --node-taint key1=value1:NoExecute
+```
+
+## Issues w/ Rootless
+
+### Ports
+When running rootless a new network namespace is created.  This means that k3s instance is running with networking
+fairly detached from the host.  The only way to access services run in k3s from the host is to setup port forwards
+to the k3s network namespace.  We have a controller that will automatically bind 6443 and service port below 1024 to the host with an offset of 10000. 
+
+That means service port 80 will become 10080 on the host, but 8080 will become 8080 without any offset.
+
+Currently, only `LoadBalancer` services are automatically bound.
+
+### Daemon lifecycle
+Once you kill k3s and then start a new instance of k3s it will create a new network namespace, but it doesn't kill the old pods.  So you are left
+with a fairly broken setup.  This is the main issue at the moment, how to deal with the network namespace.
+
+The issue is tracked in https://github.com/rootless-containers/rootlesskit/issues/65
+
+### Cgroups
+
+Cgroups are not supported
+
+## Running w/ Rootless
+
+Just add `--rootless` flag to either server or agent.  So run `k3s server --rootless` and then look for the message
+`Wrote kubeconfig [SOME PATH]` for where your kubeconfig to access you cluster is.  Becareful, if you use `-o` to write
+the kubeconfig to a different directory it will probably not work.  This is because the k3s instance in running in a different
+mount namespace.
+
+## Upgrades
+
+To upgrade k3s from an older version you can re-run the installation script using the same flags, eg:
+
+```sh
+curl -sfL https://get.k3s.io | sh -
+```
+
+If you want to upgrade to specific version you can run the following command:
+
+```sh
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=vX.Y.Z-rc1 sh -
+```
+
+Or to manually upgrade k3s:
+1. Download the desired version of k3s from [releases](https://github.com/rancher/k3s/releases/latest)
+2. Install to an appropriate location (normally `/usr/local/bin/k3s`)
+3. Stop the old version
+4. Start the new version
+
+Restarting k3s is supported by the installation script for systemd and openrc.
+To restart manually for systemd use:
+```sh
+sudo systemctl restart k3s
+```
+
+To restart manually for openrc use:
+```sh
+sudo service k3s restart
+```
+
+Upgrading an air-gap environment can be accomplished in the following manner:
+1. Download air-gap images and install if changed
+2. Install new k3s binary (from installer or manual download)
+3. Restart k3s (if not restarted automatically by installer)
+
 TODO
 ----
-Currently broken or stuff that needs to be done for this to be considered production quality.
+Current items to implement before this is to be considered production quality.
 
-1. Metrics API due to kube aggregation not being setup
-2. HA
-3. Work on e2e, sonobouy.
-4. etcd doesn't actually work because args aren't exposed
+1. Multi-Server / High Availability (HA)
+2. Documentation moved to Rancher
+3. Automated tests for k3s specific features

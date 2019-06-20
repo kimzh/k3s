@@ -10,16 +10,24 @@ import (
 type Agent struct {
 	Token                    string
 	TokenFile                string
-  ServerURL                string
+	ServerURL                string
+	ResolvConf               string
 	DataDir                  string
 	NodeIP                   string
 	NodeName                 string
 	ClusterSecret            string
+	PauseImage               string
 	Docker                   bool
 	ContainerRuntimeEndpoint string
 	NoFlannel                bool
+	FlannelIface             string
 	Debug                    bool
+	Rootless                 bool
 	AgentShared
+	ExtraKubeletArgs   cli.StringSlice
+	ExtraKubeProxyArgs cli.StringSlice
+	Labels             cli.StringSlice
+	Taints             cli.StringSlice
 }
 
 type AgentShared struct {
@@ -50,10 +58,46 @@ var (
 		Usage:       "(agent) Disable embedded flannel",
 		Destination: &AgentConfig.NoFlannel,
 	}
+	FlannelIfaceFlag = cli.StringFlag{
+		Name:        "flannel-iface",
+		Usage:       "(agent) Override default flannel interface",
+		Destination: &AgentConfig.FlannelIface,
+	}
 	CRIEndpointFlag = cli.StringFlag{
 		Name:        "container-runtime-endpoint",
 		Usage:       "(agent) Disable embedded containerd and use alternative CRI implementation",
 		Destination: &AgentConfig.ContainerRuntimeEndpoint,
+	}
+	PauseImageFlag = cli.StringFlag{
+		Name:        "pause-image",
+		Usage:       "(agent) Customized pause image for containerd sandbox",
+		Destination: &AgentConfig.PauseImage,
+	}
+	ResolvConfFlag = cli.StringFlag{
+		Name:        "resolv-conf",
+		Usage:       "(agent) Kubelet resolv.conf file",
+		EnvVar:      "K3S_RESOLV_CONF",
+		Destination: &AgentConfig.ResolvConf,
+	}
+	ExtraKubeletArgs = cli.StringSliceFlag{
+		Name:  "kubelet-arg",
+		Usage: "(agent) Customized flag for kubelet process",
+		Value: &AgentConfig.ExtraKubeletArgs,
+	}
+	ExtraKubeProxyArgs = cli.StringSliceFlag{
+		Name:  "kube-proxy-arg",
+		Usage: "(agent) Customized flag for kube-proxy process",
+		Value: &AgentConfig.ExtraKubeProxyArgs,
+	}
+	NodeTaints = cli.StringSliceFlag{
+		Name:  "node-taint",
+		Usage: "(agent) Registring kubelet with set of taints",
+		Value: &AgentConfig.Taints,
+	}
+	NodeLabels = cli.StringSliceFlag{
+		Name:  "node-label",
+		Usage: "(agent) Registring kubelet with set of labels",
+		Value: &AgentConfig.Labels,
 	}
 )
 
@@ -94,11 +138,23 @@ func NewAgentCommand(action func(ctx *cli.Context) error) cli.Command {
 				Destination: &AgentConfig.ClusterSecret,
 				EnvVar:      "K3S_CLUSTER_SECRET",
 			},
+			cli.BoolFlag{
+				Name:        "rootless",
+				Usage:       "(experimental) Run rootless",
+				Destination: &AgentConfig.Rootless,
+			},
 			DockerFlag,
 			FlannelFlag,
+			FlannelIfaceFlag,
 			NodeNameFlag,
 			NodeIPFlag,
 			CRIEndpointFlag,
+			PauseImageFlag,
+			ResolvConfFlag,
+			ExtraKubeletArgs,
+			ExtraKubeProxyArgs,
+			NodeLabels,
+			NodeTaints,
 		},
 	}
 }

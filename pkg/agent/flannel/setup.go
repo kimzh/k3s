@@ -35,7 +35,7 @@ const (
   ]
 }
 `
-	netJson = `{
+	netJSON = `{
     "Network": "%CIDR%",
     "Backend": {
     "Type": "vxlan"
@@ -79,7 +79,7 @@ func Run(ctx context.Context, config *config.Node) error {
 	}
 
 	go func() {
-		err := flannel(ctx, config.FlannelConf, config.AgentConfig.KubeConfig)
+		err := flannel(ctx, config.FlannelIface, config.FlannelConf, config.AgentConfig.KubeConfig)
 		logrus.Fatalf("flannel exited: %v", err)
 	}()
 
@@ -99,5 +99,5 @@ func createFlannelConf(config *config.Node) error {
 		return nil
 	}
 	return util.WriteFile(config.FlannelConf,
-		strings.Replace(netJson, "%CIDR%", config.AgentConfig.ClusterCIDR.String(), -1))
+		strings.Replace(netJSON, "%CIDR%", config.AgentConfig.ClusterCIDR.String(), -1))
 }
